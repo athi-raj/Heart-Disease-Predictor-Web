@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Heart Disease Predictor — Explainable AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg     : #0d1117; --surface: #161b22; --border : #21262d;
+      --text   : #e6edf3; --muted  : #8a9bb0; --green  : #3fb950;
+      --red    : #f85149; --blue   : #58a6ff; --amber  : #d29922;
+      --btn    : #238636;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; line-height: 1.7; }
+
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,17,23,0.95); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 5%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo { font-family: 'DM Serif Display', serif; font-size: 20px; color: var(--text); text-decoration: none; }
+
+    .hero {
+      text-align: center; padding: 80px 5% 60px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-badge {
+      display: inline-block; background: #1f2937;
+      border: 1px solid var(--border); border-radius: 20px;
+      padding: 4px 14px; font-size: 11px; color: var(--blue);
+      letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 20px;
+    }
+    .hero h1 { font-family: 'DM Serif Display', serif; font-size: clamp(28px, 5vw, 52px); margin-bottom: 12px; }
+    .hero h1 span { color: var(--red); }
+    .hero p  { color: var(--muted); font-size: 14px; max-width: 560px; margin: 0 auto; }
+
+    /* FORM */
+    .predictor {
+      max-width: 900px; margin: 60px auto; padding: 0 5%;
+    }
+    .form-title {
+      font-family: 'DM Serif Display', serif; font-size: 28px;
+      margin-bottom: 8px;
+    }
+    .form-sub { color: var(--muted); font-size: 12px; margin-bottom: 36px; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label {
+      font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .field input, .field select {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+      color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px;
+      outline: none; transition: border-color .2s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--blue); }
+    .field select option { background: var(--surface); }
+
+    .slider-wrap { display: flex; align-items: center; gap: 12px; }
+    .slider-wrap input[type=range] {
+      flex: 1; accent-color: var(--blue); padding: 0; background: transparent; border: none;
+    }
+    .slider-val {
+      min-width: 42px; text-align: right;
+      font-size: 13px; color: var(--blue);
+    }
+
+    .btn-predict {
+      width: 100%; padding: 14px;
+      background: var(--btn); color: #fff;
+      border: none; border-radius: 8px;
+      font-family: 'DM Mono', monospace; font-size: 14px;
+      cursor: pointer; transition: opacity .2s;
+    }
+    .btn-predict:hover { opacity: 0.85; }
+    .btn-predict:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* RESULT */
+    #result { margin-top: 40px; }
+
+    .result-box {
+      border-radius: 12px; padding: 24px 28px; margin-bottom: 20px;
+      font-family: 'DM Mono', monospace;
+    }
+    .result-low      { background: #1b2d1e; border: 1px solid var(--green); }
+    .result-moderate { background: #3a2f12; border: 1px solid var(--amber); }
+    .result-high     { background: #2d1b1b; border: 1px solid var(--red);   }
+
+    .result-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .result-low      .result-title { color: var(--green); }
+    .result-moderate .result-title { color: var(--amber); }
+    .result-high     .result-title { color: var(--red);   }
+    .result-meta { font-size: 13px; color: var(--muted); }
+
+    .shap-section { margin-top: 24px; }
+    .shap-label {
+      font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 14px;
+    }
+    .shap-section img { width: 100%; border-radius: 10px; border: 1px solid var(--border); }
+
+    .explain-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px 24px; margin-top: 20px;
+      font-size: 13px;
+    }
+    .explain-card b { color: var(--blue); }
+    .risk-tag     { color: var(--red); }
+    .protect-tag  { color: var(--green); }
+
+    .rec-card {
+      background: #1a2332; border: 1px solid var(--blue);
+      border-radius: 10px; padding: 20px 24px; margin-top: 16px;
+      font-size: 13px;
+    }
+    .rec-card b { color: var(--blue); }
+    .rec-text { color: var(--muted); margin-top: 8px; line-height: 1.7; }
+
+    .disclaimer {
+      font-size: 11px; color: #484f58; margin-top: 20px;
+      padding-top: 16px; border-top: 1px solid var(--border);
+    }
+
+    .loading {
+      text-align: center; padding: 40px;
+      color: var(--muted); font-size: 13px;
+    }
+
+    footer {
+      text-align: center; padding: 32px 5%;
+      border-top: 1px solid var(--border);
+      color: var(--muted); font-size: 12px; margin-top: 80px;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="#">🫀 HeartAI</a>
+</nav>
+
+<div class="hero">
+  <div class="hero-badge">Explainable AI · Deep Learning</div>
+  <h1>Heart Disease <span>Predictor</span></h1>
+  <p>Enter patient clinical details below to receive a risk assessment powered by deep learning and SHAP Explainable AI.</p>
+</div>
+
+<div class="predictor">
+  <div class="form-title">Patient Details</div>
+  <div class="form-sub">CLINICAL RISK ASSESSMENT · ALL FIELDS REQUIRED</div>
+
+  <div class="form-grid">
+
+    <div class="field">
+      <label>Age</label>
+      <div class="slider-wrap">
+        <input type="range" id="age" min="1" max="100" value="50" oninput="document.getElementById('age_val').textContent=this.value"/>
+        <span class="slider-val" id="age_val">50</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Sex</label>
+      <select id="sex">
+        <option>Male</option>
+        <option>Female</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Dataset (Source Institution)</label>
+      <select id="dataset">
+        <option>Cleveland</option>
+        <option>Hungary</option>
+        <option>Switzerland</option>
+        <option>VA Long Beach</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Chest Pain Type</label>
+      <select id="cp">
+        <option>typical angina</option>
+        <option>atypical angina</option>
+        <option>non-anginal</option>
+        <option>asymptomatic</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Resting Blood Pressure (mmHg)</label>
+      <div class="slider-wrap">
+        <input type="range" id="trestbps" min="80" max="220" value="120" oninput="document.getElementById('trestbps_val').textContent=this.value"/>
+        <span class="slider-val" id="trestbps_val">120</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Cholesterol (mg/dl)</label>
+      <div class="slider-wrap">
+        <input type="range" id="chol" min="100" max="600" value="200" oninput="document.getElementById('chol_val').textContent=this.value"/>
+        <span class="slider-val" id="chol_val">200</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Fasting Blood Sugar &gt; 120 mg/dl</label>
+      <select id="fbs">
+        <option>True</option>
+        <option>False</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Resting ECG</label>
+      <select id="restecg">
+        <option>normal</option>
+        <option>st-t abnormality</option>
+        <option>lv hypertrophy</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Maximum Heart Rate</label>
+      <div class="slider-wrap">
+        <input type="range" id="thalch" min="60" max="220" value="150" oninput="document.getElementById('thalch_val').textContent=this.value"/>
+        <span class="slider-val" id="thalch_val">150</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Exercise Induced Angina</label>
+      <select id="exang">
+        <option>True</option>
+        <option>False</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Old Peak (ST Depression)</label>
+      <div class="slider-wrap">
+        <input type="range" id="oldpeak" min="0" max="7" step="0.1" value="1" oninput="document.getElementById('oldpeak_val').textContent=parseFloat(this.value).toFixed(1)"/>
+        <span class="slider-val" id="oldpeak_val">1.0</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Slope</label>
+      <select id="slope">
+        <option>upsloping</option>
+        <option>flat</option>
+        <option>downsloping</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Major Vessels (ca)</label>
+      <div class="slider-wrap">
+        <input type="range" id="ca" min="0" max="4" step="1" value="0" oninput="document.getElementById('ca_val').textContent=this.value"/>
+        <span class="slider-val" id="ca_val">0</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Thal</label>
+      <select id="thal">
+        <option>normal</option>
+        <option>fixed defect</option>
+        <option>reversable defect</option>
+      </select>
+    </div>
+
+  </div>
+
+  <button class="btn-predict" id="predictBtn" onclick="runPrediction()">
+    Run Prediction
+  </button>
+
+  <div id="result"></div>
+</div>
+
+<footer>
+  Built for preventive healthcare · Powered by Explainable AI · Designed for accessibility in rural India<br/>
+  © 2026 athi-raj · MIT License
+</footer>
+
+<script>
+  const API = '';  // same origin — Flask serves both
+
+  async function runPrediction() {
+    const btn = document.getElementById('predictBtn');
+    const resultDiv = document.getElementById('result');
+
+    btn.disabled = true;
+    btn.textContent = 'Computing...';
+    resultDiv.innerHTML = '<div class="loading">⏳ Running prediction and computing SHAP explanation...<br/><span style="font-size:11px;color:#484f58;">This may take 15–20 seconds on first run.</span></div>';
+
+    const payload = {
+      age      : document.getElementById('age').value,
+      sex      : document.getElementById('sex').value,
+      dataset  : document.getElementById('dataset').value,
+      cp       : document.getElementById('cp').value,
+      trestbps : document.getElementById('trestbps').value,
+      chol     : document.getElementById('chol').value,
+      fbs      : document.getElementById('fbs').value,
+      restecg  : document.getElementById('restecg').value,
+      thalch   : document.getElementById('thalch').value,
+      exang    : document.getElementById('exang').value,
+      oldpeak  : document.getElementById('oldpeak').value,
+      slope    : document.getElementById('slope').value,
+      ca       : document.getElementById('ca').value,
+      thal     : document.getElementById('thal').value,
+    };
+
+    try {
+      const res  = await fetch(`${API}/predict`, {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      resultDiv.innerHTML = `
+        <div class="result-box result-${data.risk_class}">
+          <div class="result-title">${data.result_text}</div>
+          <div class="result-meta">
+            Confidence Score : ${data.confidence}%<br/>
+            Risk Probability : ${data.probability}
+          </div>
+        </div>
+
+        <div class="shap-section">
+          <div class="shap-label">🔍 Explainable AI — Feature Contributions (SHAP)</div>
+          <img src="data:image/png;base64,${data.shap_chart}" alt="SHAP Chart"/>
+        </div>
+
+        <div class="explain-card">
+          <b>🧠 AI Explanation</b><br/><br/>
+          <span class="risk-tag">▲ Top Risk Contributor</span><br/>
+          <span style="color:#e6edf3;">• ${data.top_risk}</span>
+          <br/><br/>
+          <span class="protect-tag">▼ Top Protective Factor</span><br/>
+          <span style="color:#e6edf3;">• ${data.top_protect}</span>
+          <br/><br/>
+          <span style="color:#8a9bb0;">The AI identified these as the most influential factors for this patient.</span>
+        </div>
+
+        <div class="rec-card">
+          <b>💊 Personalized Recommendation</b>
+          <div class="rec-text">${data.recommendation}</div>
+        </div>
+
+        <div class="disclaimer">
+          ⚕ This tool is for educational purposes only and does not constitute medical advice.
+          Consult a qualified physician for clinical decisions.
+        </div>
+      `;
+
+    } catch (err) {
+      resultDiv.innerHTML = `<div style="color:var(--red);font-size:13px;padding:20px;">Error: ${err.message}</div>`;
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Run Prediction';
+  }
+</script>
+</body>
+</html>
