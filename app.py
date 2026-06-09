@@ -5,7 +5,6 @@ import base64
 import numpy as np
 import pandas as pd
 import joblib
-import shap
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -22,11 +21,6 @@ from tensorflow.keras.models import load_model
 model           = load_model("models/heart_disease_model.keras")
 scaler          = joblib.load("models/heart_scaler.pkl")
 feature_columns = joblib.load("models/heart_features.pkl")
-
-explainer = shap.GradientExplainer(
-    model,
-    np.zeros((1, len(feature_columns)))
-)
 
 feature_mapping = {
     "age"                      : "Patient Age",
@@ -83,6 +77,17 @@ def get_recommendation(feature_name):
             return recommendations[key]
     return "Maintain a healthy lifestyle. Regular exercise, balanced diet, and routine checkups are recommended."
 
+def compute_feature_importance(patient_scaled, feature_columns, feature_mapping):
+    """Fast perturbation-based importance (no SHAP)."""
+    base_pred = float(model.predict(patient_scaled, verbose=0)[0][0])
+    importances = []
+    for i in range(patient_scaled.shape[1]):
+        perturbed = patient_scaled.copy()
+        perturbed[0, i] = 0  # zero out the feature
+        pred = float(model.predict(perturbed, verbose=0)[0][0])
+        importances.append(pred - base_pred)
+    return np.array(importances)
+
 
 @app.route('/')
 def index():
@@ -129,11 +134,9 @@ def predict():
 
         confidence = max(probability, 1 - probability) * 100
 
-        # SHAP
-        shap_values = explainer(patient_scaled)
-        vals        = shap_values.values[0].ravel()
-
-        top_idx   = np.argsort(np.abs(vals))[-10:]
+        # Fast feature importance
+        vals    = compute_feature_importance(patient_scaled, feature_columns, feature_mapping)
+        top_idx = np.argsort(np.abs(vals))[-10:]
         top_vals  = vals[top_idx]
         top_names = [feature_mapping.get(feature_columns[i], feature_columns[i]) for i in top_idx]
         colors    = ['#f85149' if v > 0 else '#3fb950' for v in top_vals]
@@ -142,7 +145,7 @@ def predict():
         ax.barh(top_names, top_vals, color=colors)
         ax.axvline(0, color='white', linewidth=0.8)
         ax.set_title('Top 10 Features Influencing This Prediction', color='#e6edf3', fontsize=12, pad=10)
-        ax.set_xlabel('SHAP Value  (🔴 increases risk · 🟢 reduces risk)', color='#8a9bb0', fontsize=9)
+        ax.set_xlabel('Importance (🔴 increases risk · 🟢 reduces risk)', color='#8a9bb0', fontsize=9)
         ax.tick_params(colors='#8a9bb0')
         for spine in ax.spines.values():
             spine.set_edgecolor('#21262d')
