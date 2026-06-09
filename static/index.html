@@ -362,6 +362,23 @@
 </footer>
 
 <script>
+  async function fetchWithRetry(url, options, retries = 3, delayMs = 8000) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await fetch(url, options);
+        return res;
+      } catch (err) {
+        if (i < retries - 1) {
+          document.getElementById('wake-msg').textContent =
+            `Server is waking up... retrying (${i + 1}/${retries - 1})`;
+          await new Promise(r => setTimeout(r, delayMs));
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
   async function runPrediction() {
     const btn = document.getElementById('predictBtn');
     const resultDiv = document.getElementById('result');
@@ -374,8 +391,10 @@
         <span class="loading-dot"></span>
         <span class="loading-dot"></span>
         <span class="loading-dot"></span>
-        <div style="margin-top:12px;">Running prediction and computing SHAP explanation...</div>
-        <div style="font-size:11px;color:#484f58;margin-top:6px;">This may take 15–20 seconds on first run.</div>
+        <div style="margin-top:12px;">Running prediction and computing explanation...</div>
+        <div id="wake-msg" style="font-size:11px;color:#484f58;margin-top:6px;">
+          This may take 15–30 seconds if the server just woke up.
+        </div>
       </div>`;
 
     const payload = {
@@ -396,13 +415,17 @@
     };
 
     try {
-      const res  = await fetch('/predict', {
+      const res = await fetchWithRetry('/predict', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify(payload)
       });
 
       const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
 
       resultDiv.innerHTML = `
         <div class="result-card result-${data.risk_class}">
@@ -413,8 +436,8 @@
           </div>
         </div>
 
-        <div class="section-label">🔍 Explainable AI — Feature Contributions (SHAP)</div>
-        <img class="shap-img" src="data:image/png;base64,${data.shap_chart}" alt="SHAP Chart"/>
+        <div class="section-label">🔍 Explainable AI — Feature Contributions</div>
+        <img class="shap-img" src="data:image/png;base64,${data.shap_chart}" alt="Feature Importance Chart"/>
 
         <div class="explain-card">
           <b>🧠 AI Explanation</b><br/><br/>
@@ -442,7 +465,10 @@
         <div style="color:var(--red);font-size:13px;padding:20px;
                     background:var(--surface);border-radius:8px;
                     border:1px solid var(--red);">
-          Error: ${err.message}
+          ⚠ ${err.message}<br/>
+          <span style="color:#484f58;font-size:11px;margin-top:8px;display:block;">
+            The server may still be waking up. Please wait 30 seconds and try again.
+          </span>
         </div>`;
     }
 
