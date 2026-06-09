@@ -1,7 +1,6 @@
 import os
 import io
 import base64
-import requests
 
 import numpy as np
 import pandas as pd
@@ -17,27 +16,7 @@ from flask_cors import CORS
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
-# ── Download model files from GitHub at startup ──
-GITHUB_RAW = "https://raw.githubusercontent.com/athi-raj/Heart-Disease-Predictor/main"
-
-FILES = {
-    "heart_disease_model.keras" : f"{GITHUB_RAW}/heart_disease_model.keras",
-    "heart_scaler.pkl"          : f"{GITHUB_RAW}/heart_scaler.pkl",
-    "heart_features.pkl"        : f"{GITHUB_RAW}/heart_features.pkl",
-}
-
-os.makedirs("models", exist_ok=True)
-
-for filename, url in FILES.items():
-    filepath = f"models/{filename}"
-    if not os.path.exists(filepath):
-        print(f"Downloading {filename}...")
-        r = requests.get(url)
-        with open(filepath, "wb") as f:
-            f.write(r.content)
-        print(f"{filename} downloaded.")
-
-# ── Load artifacts ──
+# ── Load artifacts directly from models/ folder ──
 from tensorflow.keras.models import load_model
 
 model           = load_model("models/heart_disease_model.keras")
@@ -112,86 +91,92 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    data = request.json
+    try:
+        data = request.json
 
-    patient = pd.DataFrame([{
-        'age'     : float(data['age']),
-        'sex'     : data['sex'],
-        'dataset' : data['dataset'],
-        'cp'      : data['cp'],
-        'trestbps': float(data['trestbps']),
-        'chol'    : float(data['chol']),
-        'fbs'     : data['fbs'],
-        'restecg' : data['restecg'],
-        'thalch'  : float(data['thalch']),
-        'exang'   : data['exang'],
-        'oldpeak' : float(data['oldpeak']),
-        'slope'   : data['slope'],
-        'ca'      : float(data['ca']),
-        'thal'    : data['thal'],
-    }])
+        patient = pd.DataFrame([{
+            'age'     : float(data['age']),
+            'sex'     : data['sex'],
+            'dataset' : data['dataset'],
+            'cp'      : data['cp'],
+            'trestbps': float(data['trestbps']),
+            'chol'    : float(data['chol']),
+            'fbs'     : data['fbs'],
+            'restecg' : data['restecg'],
+            'thalch'  : float(data['thalch']),
+            'exang'   : data['exang'],
+            'oldpeak' : float(data['oldpeak']),
+            'slope'   : data['slope'],
+            'ca'      : float(data['ca']),
+            'thal'    : data['thal'],
+        }])
 
-    patient_encoded = pd.get_dummies(patient)
-    patient_encoded = patient_encoded.reindex(columns=feature_columns, fill_value=0)
-    patient_scaled  = scaler.transform(patient_encoded)
+        patient_encoded = pd.get_dummies(patient)
+        patient_encoded = patient_encoded.reindex(columns=feature_columns, fill_value=0)
+        patient_scaled  = scaler.transform(patient_encoded)
 
-    probability = float(model.predict(patient_scaled, verbose=0)[0][0])
+        probability = float(model.predict(patient_scaled, verbose=0)[0][0])
 
-    if probability < 0.40:
-        risk_class  = 'low'
-        result_text = '✓ LOW RISK OF HEART DISEASE'
-    elif probability < 0.60:
-        risk_class  = 'moderate'
-        result_text = '⚠ MODERATE RISK OF HEART DISEASE'
-    else:
-        risk_class  = 'high'
-        result_text = '🔴 VERY HIGH RISK OF HEART DISEASE'
+        if probability < 0.40:
+            risk_class  = 'low'
+            result_text = '✓ LOW RISK OF HEART DISEASE'
+        elif probability < 0.60:
+            risk_class  = 'moderate'
+            result_text = '⚠ MODERATE RISK OF HEART DISEASE'
+        else:
+            risk_class  = 'high'
+            result_text = '🔴 VERY HIGH RISK OF HEART DISEASE'
 
-    confidence = max(probability, 1 - probability) * 100
+        confidence = max(probability, 1 - probability) * 100
 
-    # SHAP
-    shap_values = explainer(patient_scaled)
-    vals        = shap_values.values[0].ravel()
+        # SHAP
+        shap_values = explainer(patient_scaled)
+        vals        = shap_values.values[0].ravel()
 
-    top_idx    = np.argsort(np.abs(vals))[-10:]
-    top_vals   = vals[top_idx]
-    top_names  = [feature_mapping.get(feature_columns[i], feature_columns[i]) for i in top_idx]
-    colors     = ['#f85149' if v > 0 else '#3fb950' for v in top_vals]
+        top_idx   = np.argsort(np.abs(vals))[-10:]
+        top_vals  = vals[top_idx]
+        top_names = [feature_mapping.get(feature_columns[i], feature_columns[i]) for i in top_idx]
+        colors    = ['#f85149' if v > 0 else '#3fb950' for v in top_vals]
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.barh(top_names, top_vals, color=colors)
-    ax.axvline(0, color='white', linewidth=0.8)
-    ax.set_title('Top 10 Features Influencing This Prediction', color='#e6edf3', fontsize=12, pad=10)
-    ax.set_xlabel('SHAP Value  (🔴 increases risk · 🟢 reduces risk)', color='#8a9bb0', fontsize=9)
-    ax.tick_params(colors='#8a9bb0')
-    for spine in ax.spines.values():
-        spine.set_edgecolor('#21262d')
-    fig.patch.set_facecolor('#0d1117')
-    ax.set_facecolor('#0d1117')
-    plt.tight_layout()
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.barh(top_names, top_vals, color=colors)
+        ax.axvline(0, color='white', linewidth=0.8)
+        ax.set_title('Top 10 Features Influencing This Prediction', color='#e6edf3', fontsize=12, pad=10)
+        ax.set_xlabel('SHAP Value  (🔴 increases risk · 🟢 reduces risk)', color='#8a9bb0', fontsize=9)
+        ax.tick_params(colors='#8a9bb0')
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#21262d')
+        fig.patch.set_facecolor('#0d1117')
+        ax.set_facecolor('#0d1117')
+        plt.tight_layout()
 
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=120, bbox_inches='tight')
-    plt.close()
-    buf.seek(0)
-    shap_chart = base64.b64encode(buf.read()).decode('utf-8')
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=120, bbox_inches='tight')
+        plt.close()
+        buf.seek(0)
+        shap_chart = base64.b64encode(buf.read()).decode('utf-8')
 
-    top_risk_idx   = int(np.argmax(top_vals)) if top_vals.max() > 0 else None
-    top_prot_idx   = int(np.argmin(top_vals)) if top_vals.min() < 0 else None
-    top_risk_name  = top_names[top_risk_idx]  if top_risk_idx  is not None else 'N/A'
-    top_prot_name  = top_names[top_prot_idx]  if top_prot_idx  is not None else 'N/A'
-    recommendation = get_recommendation(top_risk_name)
+        top_risk_idx   = int(np.argmax(top_vals)) if top_vals.max() > 0 else None
+        top_prot_idx   = int(np.argmin(top_vals)) if top_vals.min() < 0 else None
+        top_risk_name  = top_names[top_risk_idx] if top_risk_idx is not None else 'N/A'
+        top_prot_name  = top_names[top_prot_idx] if top_prot_idx is not None else 'N/A'
+        recommendation = get_recommendation(top_risk_name)
 
-    return jsonify({
-        'probability'   : round(probability, 4),
-        'confidence'    : round(confidence, 2),
-        'risk_class'    : risk_class,
-        'result_text'   : result_text,
-        'shap_chart'    : shap_chart,
-        'top_risk'      : top_risk_name,
-        'top_protect'   : top_prot_name,
-        'recommendation': recommendation,
-    })
+        return jsonify({
+            'probability'   : round(probability, 4),
+            'confidence'    : round(confidence, 2),
+            'risk_class'    : risk_class,
+            'result_text'   : result_text,
+            'shap_chart'    : shap_chart,
+            'top_risk'      : top_risk_name,
+            'top_protect'   : top_prot_name,
+            'recommendation': recommendation,
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
