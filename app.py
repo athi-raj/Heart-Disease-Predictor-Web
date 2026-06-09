@@ -23,8 +23,8 @@ model           = load_model("models/heart_disease_model.keras")
 scaler          = joblib.load("models/heart_scaler.pkl")
 feature_columns = joblib.load("models/heart_features.pkl")
 
-explainer = shap.Explainer(
-    lambda x: model.predict(x, verbose=0),
+explainer = shap.GradientExplainer(
+    model,
     np.zeros((1, len(feature_columns)))
 )
 
